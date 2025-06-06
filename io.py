@@ -1,12 +1,20 @@
-#!/usr/bin/env python
 import requests,json
 from datetime import date, datetime,timezone,timedelta
 from requests.models import HTTPError
-from zoneinfo import ZoneInfo
+try:
+    from zoneinfo import ZoneInfo
+except ImportError:
+    from backports.zoneinfo import ZoneInfo
+try:
+    import config  # ensure config..py is in the .gitignore file
+except ImportError:
+    print("Error: config.py not found. Please create it with your API_KEY, ACCOUNT_NUMBER & DEVICE_ID.")
+    exit(1)
 
 url = "https://api.octopus.energy/v1/graphql/"
-apikey="" #Y Your Octopus API Key
-accountNumber="" # Your Octopus Account Number
+apikey = config.API_KEY # Your Octopus API Key
+accountNumber = config.ACCOUNT_NUMBER # Your Octopus Account Number
+deviceId = config.DEVICE_ID # ID to track from e.g. EV Charger (get deviceID from devices API call; https://developer.octopus.energy/graphql/reference/queries#api-queries-devices)   
 
 dateTimeToUse = datetime.now().astimezone()
 if dateTimeToUse.hour < 17:
@@ -33,19 +41,20 @@ def refreshToken(apiKey,accountNumber):
     jsonResponse = json.loads(r.text)
     return jsonResponse['data']['obtainKrakenToken']['token']
 
-def getObject():
+def get_flex_planned_dispatches(): #Changed from plannedDispatches to flexPlannedDispatches as previous deprecated 2025/05/27 to be removed 2025/08/27. API notice: https://announcements.kraken.tech/announcements/public/166/
     try:
         query = """
-            query getData($input: String!) {
-                plannedDispatches(accountNumber: $input) {
-                    startDt
-                    endDt
+            query FlexPlannedDispatches($deviceId: String!) {
+                flexPlannedDispatches(deviceId: $deviceId) {
+                    start
+                    end
+                    type
                 }
             }
         """
-        variables = {'input': accountNumber}
-        headers={"Authorization": authToken}
-        r = requests.post(url, json={'query': query , 'variables': variables, 'operationName': 'getData'},headers=headers)
+        variables = {'deviceId': deviceId}
+        headers = {"Authorization": authToken}
+        r = requests.post(url, json={'query': query, 'variables': variables, 'operationName': 'FlexPlannedDispatches'}, headers=headers)
         return json.loads(r.text)['data']
     except HTTPError as http_err:
         print(f'HTTP Error {http_err}')
@@ -53,8 +62,8 @@ def getObject():
         print(f'Another error occurred: {err}')
 
 def getTimes():
-    object = getObject()
-    return object['plannedDispatches']
+    object = get_flex_planned_dispatches()
+    return object['flexPlannedDispatches']
 
 def returnPartnerSlotStart(startTime):
     for x in times:
